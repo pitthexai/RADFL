@@ -29,8 +29,8 @@ import copy
 import torch
 
 '''
-python framework_fedavg.py --rounds 100 \
-  --n_client_epochs 3\
+python framework_fedavg.py --rounds 50 \
+  --n_client_epochs 30\
   --batch_size 32 \
   --lr 0.005 \
   --log_every 2 \
@@ -84,17 +84,26 @@ def prepare_dataloader(args, data_transforms):
 
     batch_size = args.batch_size
 
-    train_dataset_B = XrayDataset(root_dir="/home/feg48/fl_xray_project/input_low_baseline/training/siteB", transforms=data_transforms)
-    train_dataset_C = XrayDataset(root_dir="/home/feg48/fl_xray_project/input_low_baseline/training/siteC", transforms=data_transforms)
-    train_dataset_D = XrayDataset(root_dir="/home/feg48/fl_xray_project/input_low_baseline/training/siteD", transforms=data_transforms)
+    train_dataset_B = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/training/siteB", transforms=data_transforms)
+    train_dataset_C = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/training/siteC", transforms=data_transforms)
+    train_dataset_D = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/training/siteD", transforms=data_transforms)
 
-    test_dataset_B = XrayDataset(root_dir="/home/feg48/fl_xray_project/input_low_baseline/testing/siteB", transforms=data_transforms)
-    test_dataset_C = XrayDataset(root_dir="/home/feg48/fl_xray_project/input_low_baseline/testing/siteC", transforms=data_transforms)
-    test_dataset_D = XrayDataset(root_dir="/home/feg48/fl_xray_project/input_low_baseline/testing/siteD", transforms=data_transforms)
+    val_dataset_B = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/testing/siteB", transforms=data_transforms)
+    val_dataset_C = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/testing/siteC", transforms=data_transforms)
+    val_dataset_D = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/testing/siteD", transforms=data_transforms)
+
+    test_dataset_B = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/testing/siteB", transforms=data_transforms)
+    test_dataset_C = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/testing/siteC", transforms=data_transforms)
+    test_dataset_D = XrayDataset(root_dir="/home/feg48/fl_xray_project/low_line/testing/siteD", transforms=data_transforms)
         
     train_loader_B = DataLoader(train_dataset_B, batch_size=batch_size, shuffle=True)
     train_loader_C = DataLoader(train_dataset_C, batch_size=batch_size, shuffle=True)
     train_loader_D = DataLoader(train_dataset_D, batch_size=batch_size, shuffle=True)
+
+    # Combine the datasets into a single dataset
+    total_val_dataset = ConcatDataset([val_dataset_B, val_dataset_C, val_dataset_D])
+    # Create a DataLoader for the combined dataset
+    total_val_loader = DataLoader(total_val_dataset, batch_size=batch_size)
 
     # Combine the datasets into a single dataset
     total_test_dataset = ConcatDataset([test_dataset_B, test_dataset_C, test_dataset_D])
@@ -107,7 +116,7 @@ def prepare_dataloader(args, data_transforms):
         "D": train_loader_D,
     }
 
-    return train_loaders, None, total_test_loader
+    return train_loaders, total_val_loader, total_test_loader
 
 def average_weights(weights: List[Dict[str, torch.Tensor]], sample_size: List[int]) -> Dict[str, torch.Tensor]:
     # weights_avg = copy.deepcopy(weights[0])
@@ -234,19 +243,26 @@ def train(args, root_model, train_dataloaders, val_dataloaders, test_dataloader,
         avg_client_acc = sum(clients_accuracy) / len(clients_accuracy)
         # print(f"Client {client_id} loss: {client_loss}")
 
-        # Test server model
-        test_loss, test_acc, precision, recall, f1 = test(root_model, test_dataloader)
+        # Test server model on validation dataset
+        val_loss, val_acc, val_precision, val_recall, val_f1 = test(root_model, val_dataloaders)
+
+        # Test server model on testing dataset
+        test_loss, test_acc, test_precision, test_recall, test_f1 = test(root_model, test_dataloader)
 
         # Print results to CLI
         print(f"\n\nResults after {round} rounds of training:")
         print(f"---> Training Loss: {avg_client_loss} | Training Accuracy: {avg_client_acc} | ")
         print(
+            f"---> Val Loss: {val_loss} | Val Accuracy: {val_acc} | "
+            f"Precision: {val_precision} | Recall: {val_recall} | F1-score: {val_f1}\n"
+        )
+        print(
             f"---> Test Loss: {test_loss} | Test Accuracy: {test_acc} | "
-            f"Precision: {precision} | Recall: {recall} | F1-score: {f1}\n"
+            f"Precision: {test_precision} | Recall: {test_recall} | F1-score: {test_f1}\n"
         )
 
         # save metrics for each rounds
-        results.append((round, avg_client_loss, avg_client_acc, test_loss, test_acc, precision, recall, f1))
+        results.append((round, avg_client_loss, avg_client_acc, val_loss, val_acc, val_precision, val_recall, val_f1, test_loss, test_acc, test_precision, test_recall, test_f1))
 
         if round % args.log_every == 0:
             model_file_path = os.path.join(model_folder, 'round_{round}.pth'.format(round=round))
@@ -256,7 +272,7 @@ def train(args, root_model, train_dataloaders, val_dataloaders, test_dataloader,
             torch.save(best_model, model_file_path)
 
             # save csv
-            df = pd.DataFrame(results, columns=["round", "train_lose", "train_acc", "test_loss", "test_acc", "test_precision", "test_recall", "test_f1"])
+            df = pd.DataFrame(results, columns=["round", "train_lose", "train_acc", "val_loss", "val_acc", "val_precision", "val_recall", "val_f1", "test_loss", "test_acc", "test_precision", "test_recall", "test_f1"])
             result_file_path = os.path.join(model_folder, 'result_{round}.csv'.format(round=round))
             df.to_csv(result_file_path, index=False)
             
@@ -268,7 +284,7 @@ def train(args, root_model, train_dataloaders, val_dataloaders, test_dataloader,
     torch.save(best_model, model_file_path)
 
     # save result metrics
-    df = pd.DataFrame(results, columns=["round", "train_lose", "train_acc", "test_loss", "test_acc", "test_precision", "test_recall", "test_f1"])
+    df = pd.DataFrame(results, columns=["round", "train_lose", "train_acc", "val_loss", "val_acc", "val_precision", "val_recall", "val_f1", "test_loss", "test_acc", "test_precision", "test_recall", "test_f1"])
     result_file_path = os.path.join(model_folder, 'final_results.csv')
     df.to_csv(result_file_path, index=False)
 
