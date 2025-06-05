@@ -370,34 +370,34 @@ def evaluate_config(server_round):
 
 # Server-side function that defines strategy and training behavior
 def server_fn(context: Context) -> ServerAppComponents:
-    # Create FedAvg strategy
-    strategy = FedAvg(
-        fraction_fit=1.0,  # 100% of available clients are selected for training in each round
-        fraction_evaluate=1.0,  # 100% of available clients are selected for evaluation in each round
-        min_fit_clients=3,  # Minimum number of clients required to participate in training
-        min_evaluate_clients=3,  # Minimum number of clients required to participate in evaluation
-        min_available_clients=3,  # Minimum number of total clients that must be connected to proceed with a round
-        initial_parameters=ndarrays_to_parameters(params),  # Initial global model parameters
-        evaluate_fn=evaluate,  # Custom evaluation function for server-side evaluation
-        on_fit_config_fn=fit_config,  # Function to configure training parameters (e.g., number of local epochs) for each round
-        fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,  # <-- pass the metric aggregation function
-        on_evaluate_config_fn=evaluate_config,
-    )
-
-    # # Create FedProx strategy
-#     strategy = FedProx(
-#         fraction_fit=1.0,
-#         fraction_evaluate=1.0,
-#         min_fit_clients=3,
-#         min_evaluate_clients=3,
-#         min_available_clients=3,
-#         proximal_mu=0.1,  # <-- FedProx regularization parameter (tune as needed)
-#         initial_parameters=ndarrays_to_parameters(params),
-#         evaluate_fn=evaluate,
-#         on_fit_config_fn=fit_config,
-#         fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
+    # # Create FedAvg strategy
+#     strategy = FedAvg(
+#         fraction_fit=1.0,  # 100% of available clients are selected for training in each round
+#         fraction_evaluate=1.0,  # 100% of available clients are selected for evaluation in each round
+#         min_fit_clients=3,  # Minimum number of clients required to participate in training
+#         min_evaluate_clients=3,  # Minimum number of clients required to participate in evaluation
+#         min_available_clients=3,  # Minimum number of total clients that must be connected to proceed with a round
+#         initial_parameters=ndarrays_to_parameters(params),  # Initial global model parameters
+#         evaluate_fn=evaluate,  # Custom evaluation function for server-side evaluation
+#         on_fit_config_fn=fit_config,  # Function to configure training parameters (e.g., number of local epochs) for each round
+#         fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,  # <-- pass the metric aggregation function
 #         on_evaluate_config_fn=evaluate_config,
 #     )
+
+    # Create FedProx strategy
+    strategy = FedProx(
+        fraction_fit=1.0,
+        fraction_evaluate=1.0,
+        min_fit_clients=3,
+        min_evaluate_clients=3,
+        min_available_clients=3,
+        proximal_mu=0.1,  # <-- FedProx regularization parameter (tune as needed)
+        initial_parameters=ndarrays_to_parameters(params),
+        evaluate_fn=evaluate,
+        on_fit_config_fn=fit_config,
+        fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
+        on_evaluate_config_fn=evaluate_config,
+    )
     config = ServerConfig(num_rounds= 30)    # Total number of federated learning rounds
     return ServerAppComponents(strategy=strategy, config=config)
 
